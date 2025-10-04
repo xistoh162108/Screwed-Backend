@@ -46,5 +46,3 @@ def determineQuestionType(client, message):
     classification = json.loads(response.text)
     return classification
 
-client = createClient("AIzaSyAImTpH0XqZNe1bwj-ShAlyhozNILxUauw")
-print(determineQuestionType(client, "날이 더워"))
