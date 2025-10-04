@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+# app/main.py
 from app.core.config import settings
+print(">>> DATABASE_URL:", settings.DATABASE_URL)
 from app.api.v1 import api_router as api_v1_router
 
 app = FastAPI(

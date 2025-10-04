@@ -3,15 +3,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
-is_sqlite = settings.DATABASE_URL.startswith("sqlite")
-connect_args = {"check_same_thread": False} if is_sqlite else {}
-
 engine = create_engine(
     settings.DATABASE_URL,
-    echo=False,
+    echo=False,          # 임시 디버깅 시 True
     future=True,
-    connect_args=connect_args,
-    pool_pre_ping=True,   # ← 커넥션 사전 ping
+    pool_pre_ping=True,
 )
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
 

@@ -42,35 +42,91 @@ def to_out(obj: TurnModel) -> TurnOut:
         updated_at=obj.updated_at,
     )
 
+# app/services/turn_service.py
+
+def _normalize_optional_id(v: str | None) -> str | None:
+    # "", "   " -> None
+    if isinstance(v, str) and v.strip() == "":
+        return None
+    return v
+
+def _get_or_create_root(db: Session, branch_id: str) -> TurnModel:
+    root_id = f"t_root_{branch_id}"
+    root = db.get(TurnModel, root_id)
+    if root:
+        return root
+    created = now_iso()
+    root = TurnModel(
+        id=root_id,
+        parent_id=None,
+        branch_id=branch_id,
+        month="2000-01",  # 더미(YYYY-MM 패턴 만족)
+        state=TurnStateModel.DRAFT,
+        stats={"notes": ["root"]},
+        created_at=created,
+        updated_at=created,
+    )
+    db.add(root)
+    db.commit()
+    db.refresh(root)
+    return root
+
 def create_turn(db: Session, body: TurnCreate) -> TurnOut:
     tid = _new_id("t")
     created = now_iso()
+
+    # 1) 입력 정규화
+    parent_id = _normalize_optional_id(body.parent_id)
+    branch_id = _normalize_optional_id(body.branch_id) or "b_main"
+
+    # 2) 부모/브랜치 처리
+    if parent_id:
+        parent = db.get(TurnModel, parent_id)
+        if not parent:
+            raise ValueError(f"Parent turn not found: {parent_id}")
+        # 부모가 있으면 부모 브랜치 상속(요청이 명시했으면 그 값 우선)
+        branch_id = body.branch_id or parent.branch_id
+    else:
+        # parent_id가 없으면 해당 브랜치 루트를 보증하고 부모로 지정
+        root = _get_or_create_root(db, branch_id)
+        parent_id = root.id
+
+    # 3) stats dict화
+    stats_dict = body.stats.model_dump(by_alias=True) if getattr(body.stats, "model_dump", None) else (body.stats or {})
+
+    # 4) INSERT
     turn = TurnModel(
         id=tid,
-        parent_id=body.parent_id,
-        branch_id=body.branch_id if body.branch_id else (None if body.parent_id else "b_main"),
+        parent_id=parent_id,
+        branch_id=branch_id,
         month=body.month,
         state=TurnStateModel(body.state.value),
-        stats=(body.stats.model_dump(by_alias=True) if body.stats else {}),
+        stats=stats_dict,
         created_at=created,
         updated_at=created,
     )
     db.add(turn)
-    db.commit()
+    try:
+        db.flush()
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise ValueError("Failed to create Turn (constraint violation): " + str(e)) from e
+
     db.refresh(turn)
 
-    # 부모-자식은 관계로만 유지(자식 리스트는 응답에서 계산)
-    if turn.parent_id:
-        # branch 상속
-        if not turn.branch_id:
-            parent = db.get(TurnModel, turn.parent_id)
-            if parent:
-                turn.branch_id = parent.branch_id
-                db.add(turn)
-                db.commit()
-                db.refresh(turn)
-
-    return to_out(turn)
+    # 5) 응답
+    return TurnOut(
+        id=turn.id,
+        parent_id=turn.parent_id,
+        branch_id=turn.branch_id,
+        month=turn.month,
+        state=TurnState(turn.state.value),
+        stats=turn.stats or {},
+        children=[c.id for c in turn.children_rel] if turn.children_rel else [],
+        created_at=turn.created_at,
+        updated_at=turn.updated_at,
+    )
 
 def get_turn(db: Session, turn_id: str) -> Optional[TurnOut]:
     obj = db.get(TurnModel, turn_id)

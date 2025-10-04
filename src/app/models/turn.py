@@ -32,13 +32,7 @@ def is_postgres_url(url: str) -> bool:
 #  - Postgres → JSONB
 #  - 그 외(SQLite 등) → 일반 JSON(+sqlite 변형)
 # ---------------------------------------------------------------------
-if is_postgres_url(settings.DATABASE_URL):
-    JSONType = JSONB
-else:
-    # SQLAlchemy의 일반 JSON 타입을 기본으로 쓰되,
-    # SQLite에선 dialiect 전용 JSON을 변형으로 지정
-    JSONType = SAJSON().with_variant(SQLITE_JSON, "sqlite")
-
+JSONType = JSONB
 
 class TurnState(str, enum.Enum):
     DRAFT = "DRAFT"

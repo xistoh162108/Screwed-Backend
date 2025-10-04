@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Literal, Dict, Any
 from enum import Enum
 
@@ -29,6 +29,13 @@ class TurnBase(BaseModel):
     parent_id: Optional[str] = None
     branch_id: Optional[str] = None
     month: str
+    
+    @field_validator("parent_id", "branch_id", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
 class TurnCreate(TurnBase):
     state: TurnState = TurnState.DRAFT
