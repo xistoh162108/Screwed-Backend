@@ -1,8 +1,6 @@
-<<<<<<< HEAD
 data/
 
 =======
->>>>>>> e8b4ddc7877db43bec649ae3424f5d70347672e2
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
