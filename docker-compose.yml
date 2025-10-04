@@ -1,12 +1,10 @@
-# docker-compose.yml
-version: "3.9"
-
 services:
   redis:
     image: redis:7
     container_name: screwed-redis
-    ports:
-      - "6379:6379"
+    # 내부 통신만
+    # ports:
+    #   - "6379:6379"
 
   backend:
     build: .
@@ -14,14 +12,17 @@ services:
     depends_on:
       - redis
     environment:
-      # 예시 환경변수 (필요한 값 채우세요)
       - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      # FastAPI 설정 예: (있다면)
-      # - API_VERSION=0.1.1
-    ports:
-      - "8000:8000"
+
+      # nginx-proxy & Let's Encrypt
+      - VIRTUAL_HOST=api.tedxkaist.org
+      - LETSENCRYPT_HOST=api.tedxkaist.org
+      - LETSENCRYPT_EMAIL=xistoh162108@kaist.ac.kr
+
+    expose:
+      - "8000"
     command: >
       uvicorn app.main:app --host 0.0.0.0 --port 8000
 
@@ -39,8 +40,44 @@ services:
 
   flower:
     image: mher/flower
-    depends_on: [redis]
+    container_name: screwed-backend-flower
+    depends_on:
+      - redis
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - VIRTUAL_HOST=flower.api.tedxkaist.org
+      - LETSENCRYPT_HOST=flower.api.tedxkaist.org
+      - LETSENCRYPT_EMAIL=xistoh162108@kaist.ac.kr
+    expose:
+      - "5555"
+    command: celery flower
+
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
     ports:
-      - "5555:5555"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs:ro
+      - vhost_d:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: nginx-letsencrypt
+    environment:
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+    volumes:
+      - certs:/etc/nginx/certs:rw        # ← 쓰기 권한 필요
+      - vhost_d:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - nginx-proxy
+
+volumes:
+  certs:
+  vhost_d:
+  html:

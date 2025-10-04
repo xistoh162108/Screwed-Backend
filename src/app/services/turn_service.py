@@ -271,6 +271,7 @@ def _serialize_turn(obj: TurnModel) -> dict:
         "id": obj.id,
         "parent_id": obj.parent_id,
         "branch_id": obj.branch_id,
+        "session_id": obj.session_id,
         "month": obj.month,
         "state": getattr(obj.state, "value", obj.state),
         "stats": obj.stats or {},
@@ -279,7 +280,14 @@ def _serialize_turn(obj: TurnModel) -> dict:
         "children": [],   # 이후 채움
     }
 
-def get_turn_tree(db: Session, root_turn_id: str, *, max_nodes: int = 5000, use_recursive_cte: bool = False) -> dict:
+def get_turn_tree(
+    db: Session,
+    root_turn_id: str,
+    *,
+    session_id: str,                 # ★ 추가: 반드시 세션 지정
+    max_nodes: int = 5000,
+    use_recursive_cte: bool = False
+) -> dict:
     """
     root_turn_id를 루트로 하는 서브트리를 JSON으로 반환.
     - 순환참조 가드
@@ -290,26 +298,30 @@ def get_turn_tree(db: Session, root_turn_id: str, *, max_nodes: int = 5000, use_
     if not root:
         raise ValueError(f"Turn not found: {root_turn_id}")
 
+    if root.session_id != session_id:
+        raise ValueError(
+            f"Turn {root_turn_id} does not belong to session {session_id}"
+        )
     if use_recursive_cte:
         # ---------- 고급: Postgres 재귀 CTE ----------
         # 모든 하위 노드를 한 번에 가져온 뒤, 파이썬에서 트리로 조립
         T = TurnModel.__table__
-        base = select(T.c.id, T.c.parent_id, T.c.branch_id, T.c.month, T.c.state, T.c.stats, T.c.created_at, T.c.updated_at).where(T.c.id == root_turn_id)
-        rec = select(T.c.id, T.c.parent_id, T.c.branch_id, T.c.month, T.c.state, T.c.stats, T.c.created_at, T.c.updated_at).select_from(
-            T.join(
-                # parent_id = prev.id
-                # SQLAlchemy 2.x 스타일의 재귀 CTE 구성
-                # 주의: dialect에 따라 state 컬럼이 Enum/Custom일 수 있으므로 그대로 select
-                # 아래는 표준적인 parent-child 조인
-                None
-            )
-        )
-        # 위의 select_from(None)은 자리표시자. SQLAlchemy에서 재귀 CTE는 다음처럼 구성합니다:
-        from sqlalchemy import CTE
+        base = select(
+            T.c.id, T.c.parent_id, T.c.branch_id, T.c.month, T.c.state,
+            T.c.stats, T.c.created_at, T.c.updated_at, T.c.session_id  # ← 선택: 디버깅/확인용
+        ).where(T.c.id == root_turn_id)
+
         base_cte = base.cte(name="turn_subtree", recursive=True)
-        rec = select(T.c.id, T.c.parent_id, T.c.branch_id, T.c.month, T.c.state, T.c.stats, T.c.created_at, T.c.updated_at).where(
-            T.c.parent_id == base_cte.c.id
+
+        # ★ 자식 확장 시 같은 session만 허용
+        rec = select(
+            T.c.id, T.c.parent_id, T.c.branch_id, T.c.month, T.c.state,
+            T.c.stats, T.c.created_at, T.c.updated_at, T.c.session_id
+        ).where(
+            (T.c.parent_id == base_cte.c.id) &
+            (T.c.session_id == root_sid)       # ★ 핵심 조건
         )
+
         subtree_cte = base_cte.union_all(rec)
 
         rows = db.execute(select(subtree_cte)).fetchall()
@@ -325,6 +337,7 @@ def get_turn_tree(db: Session, root_turn_id: str, *, max_nodes: int = 5000, use_
                 "id": r.id,
                 "parent_id": r.parent_id,
                 "branch_id": r.branch_id,
+                "session_id": r.session_id,
                 "month": r.month,
                 "state": getattr(r.state, "value", r.state) if hasattr(r, "state") else r.state,
                 "stats": r.stats or {},
@@ -376,7 +389,7 @@ def get_turn_tree(db: Session, root_turn_id: str, *, max_nodes: int = 5000, use_
 
             # 큐에 자식 push
             for ch in (cur.children_rel or []):
-                if ch.id not in visited:
+                if ch.session_id == root_sid and ch.id not in visited:  # ★ 같은 session만
                     q.append(ch.id)
 
         # id -> dict 노드

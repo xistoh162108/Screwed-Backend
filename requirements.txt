@@ -7,3 +7,4 @@ pydantic>=2.7
 pydantic-settings>=2.2
 celery[redis]>=5.3
 redis
+google-genai
