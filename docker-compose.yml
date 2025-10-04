@@ -1,0 +1,46 @@
+# docker-compose.yml
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7
+    container_name: screwed-redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: .
+    container_name: screwed-backend
+    depends_on:
+      - redis
+    environment:
+      # 예시 환경변수 (필요한 값 채우세요)
+      - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # FastAPI 설정 예: (있다면)
+      # - API_VERSION=0.1.1
+    ports:
+      - "8000:8000"
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build: .
+    container_name: screwed-worker
+    depends_on:
+      - redis
+    environment:
+      - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: >
+      celery -A app.core.celery_app.celery worker --loglevel=info -Q celery -c 4
+
+  flower:
+    image: mher/flower
+    depends_on: [redis]
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    ports:
+      - "5555:5555"
