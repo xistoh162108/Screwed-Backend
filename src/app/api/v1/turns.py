@@ -65,3 +65,10 @@ def create_branch(turn_id: str, body: TurnCreate, db: Session = Depends(get_db))
     if not t:
         raise HTTPException(404, "Parent not found")
     return t
+
+@router.get("/{turn_id}/tree")
+def get_turn_tree(turn_id: str, max_nodes: int = Query(5000, ge=1, le=20000), use_recursive_cte: bool = False, db: Session = Depends(get_db)):
+    try:
+        return turn_service.get_turn_tree(db, turn_id, max_nodes=max_nodes, use_recursive_cte=use_recursive_cte)
+    except ValueError as e:
+        raise HTTPException(status_code=404 if "not found" in str(e).lower() else 400, detail=str(e))
