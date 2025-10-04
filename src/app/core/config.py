@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     # ===== 기본 정보 =====
     PROJECT_NAME: str = "[NSAC] Backend API"
     API_V1_STR: str = "/api/v1"
-    API_VERSION: str = "0.1.1"
+    API_VERSION: str = "0.1.2"
 
     # ===== DB 설정 =====
     # 기본은 DATABASE_URL을 사용. (docker-compose나 .env에서 주입)

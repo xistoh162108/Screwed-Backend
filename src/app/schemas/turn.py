@@ -37,9 +37,9 @@ class TurnBase(BaseModel):
             return None
         return v
 
-class TurnCreate(TurnBase):
-    state: TurnState = TurnState.DRAFT
-    stats: Optional[Stats] = None
+class TurnCreate(BaseModel):
+    parent_id: Optional[str] = None
+    branch_id: Optional[str] = None
 
 class TurnUpdateStats(BaseModel):
     stats: Stats
