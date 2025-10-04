@@ -1,10 +1,17 @@
 from fastapi import FastAPI
-from app.api.v1.endpoints import health
+from app.core.config import settings
+from app.api.v1 import api_router as api_v1_router
 
-app = FastAPI(title="[NSAC] Screwed-Backend API", version="0.1.0")
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version="1.0.0",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    docs_url=f"{settings.API_V1_STR}/docs",
+    redoc_url=None,
+)
 
-app.include_router(health.router, prefix="/v1", tags=["health"])
-# app.include_router(chat.router,   prefix="/v1", tags=["chat"])
-# app.include_router(predict.router, prefix="/v1", tags=["predict"])
+app.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
-# 실행: uvicorn app.main:app --reload
+@app.get("/health")
+def health():
+    return {"status": "ok"}
