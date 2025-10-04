@@ -9,6 +9,12 @@ from datetime import datetime, timezone
 from app.models import Turn as TurnModel, TurnState as TurnStateModel
 from app.schemas import TurnCreate, TurnUpdateStats, TurnOut, TurnState, Stats
 
+# app/services/turn_service.py (상단 유틸 근처)
+import uuid
+
+def _new_session_id(prefix: str = "s") -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
 def now_iso():
     return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -38,11 +44,11 @@ def _new_branch_id() -> str:
     return f"b_{uuid.uuid4().hex[:6]}"
 
 def to_out(obj: TurnModel) -> TurnOut:
-    # children은 관계에서 수집
     return TurnOut(
         id=obj.id,
         parent_id=obj.parent_id,
         branch_id=obj.branch_id,
+        session_id=obj.session_id,         # ← 추가
         month=obj.month,
         state=TurnState(obj.state.value),
         stats=obj.stats or {},
@@ -86,31 +92,30 @@ def create_turn(db: Session, body: TurnCreate) -> TurnOut:
     tid = _new_id("t")
     created = now_iso()
 
-    # 1) 입력 정규화
     parent_id = _normalize_optional_id(body.parent_id)
     req_branch_id = _normalize_optional_id(body.branch_id)
 
-    # 2) 부모/브랜치 처리
     if parent_id:
         parent = db.get(TurnModel, parent_id)
         if not parent:
             raise ValueError(f"Parent turn not found: {parent_id}")
         branch_id = req_branch_id or parent.branch_id
+        session_id = parent.session_id           # ★ 부모의 세션 상속
     else:
-        # parent_id가 없으면 루트를 보장
         branch_id = req_branch_id or "b_main"
         root = _get_or_create_root(db, branch_id)
         parent_id = root.id
+        session_id = root.session_id             # ★ 루트의 세션 사용
 
-    stats_dict = {}                  # 빈 dict
-    month_val = created[:7]          # "YYYY-MM"
-    state_val = TurnStateModel.DRAFT # 최초 상태
+    month_val = created[:7]
+    state_val = TurnStateModel.DRAFT
+    stats_dict = {}
 
-    # 4) INSERT
     turn = TurnModel(
         id=tid,
         parent_id=parent_id,
         branch_id=branch_id,
+        session_id=session_id,                   # ★ 필수
         month=month_val,
         state=state_val,
         stats=stats_dict,
@@ -118,18 +123,15 @@ def create_turn(db: Session, body: TurnCreate) -> TurnOut:
         updated_at=created,
     )
     db.add(turn)
-    try:
-        db.flush()
-        db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        raise ValueError("Failed to create Turn (constraint violation): " + str(e)) from e
-
+    db.flush()
+    db.commit()
     db.refresh(turn)
+
     return TurnOut(
         id=turn.id,
         parent_id=turn.parent_id,
         branch_id=turn.branch_id,
+        session_id=turn.session_id,             # ★ 응답 포함
         month=turn.month,
         state=TurnState(turn.state.value),
         stats=turn.stats or {},
@@ -137,6 +139,38 @@ def create_turn(db: Session, body: TurnCreate) -> TurnOut:
         created_at=turn.created_at,
         updated_at=turn.updated_at,
     )
+    
+def _get_or_create_root(db: Session, branch_id: str) -> TurnModel:
+    root_id = f"t_root_{branch_id}"
+    root = db.get(TurnModel, root_id)
+    if root:
+        return root
+
+    created = now_iso()
+
+    # 1) 새 세션 생성
+    from app.models import Session as SessionModel
+    sid = _new_session_id()
+    sess = SessionModel(id=sid, title=None)
+    db.add(sess)
+    db.flush()  # sid 확보
+
+    # 2) 루트 생성 (session_id 연결)
+    root = TurnModel(
+        id=root_id,
+        parent_id=None,
+        branch_id=branch_id,
+        session_id=sid,              # ★ 중요
+        month="2000-01",
+        state=TurnStateModel.DRAFT,
+        stats={"notes": ["root"]},
+        created_at=created,
+        updated_at=created,
+    )
+    db.add(root)
+    db.commit()
+    db.refresh(root)
+    return root
 
 def get_turn(db: Session, turn_id: str) -> Optional[TurnOut]:
     obj = db.get(TurnModel, turn_id)
@@ -198,6 +232,7 @@ def create_child_same_branch(db: Session, parent_id: str, body: TurnCreate) -> O
     parent = db.get(TurnModel, parent_id)
     if not parent:
         return None
+    # session_id는 create_turn에서 부모로부터 상속됨
     child_body = TurnCreate(
         parent_id=parent.id,
         branch_id=parent.branch_id,
@@ -209,6 +244,7 @@ def create_branch_child(db: Session, parent_id: str, body: TurnCreate) -> Option
     if not parent:
         return None
     new_branch_id = f"b_{uuid.uuid4().hex[:6]}"
+    # session_id는 그대로 상속(브랜치만 새로) → create_turn에서 자동 상속
     child_body = TurnCreate(
         parent_id=parent.id,
         branch_id=new_branch_id,
