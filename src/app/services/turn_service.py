@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError  # 추가
 from typing import List, Optional, Dict
 import uuid
 from datetime import datetime, timezone
@@ -27,6 +28,12 @@ def _new_id(prefix: str = "t") -> str:
 
 def _children_ids(obj: TurnModel) -> List[str]:
     return [c.id for c in obj.children_rel] if obj.children_rel else []
+
+def _sibling_count(db: Session, parent_id: str) -> int:
+    return db.query(TurnModel).filter(TurnModel.parent_id == parent_id).count()
+
+def _new_branch_id() -> str:
+    return f"b_{uuid.uuid4().hex[:6]}"
 
 def to_out(obj: TurnModel) -> TurnOut:
     # children은 관계에서 수집
@@ -77,22 +84,26 @@ def create_turn(db: Session, body: TurnCreate) -> TurnOut:
 
     # 1) 입력 정규화
     parent_id = _normalize_optional_id(body.parent_id)
-    branch_id = _normalize_optional_id(body.branch_id) or "b_main"
+    req_branch_id = _normalize_optional_id(body.branch_id)
 
     # 2) 부모/브랜치 처리
     if parent_id:
         parent = db.get(TurnModel, parent_id)
         if not parent:
             raise ValueError(f"Parent turn not found: {parent_id}")
-        # 부모가 있으면 부모 브랜치 상속(요청이 명시했으면 그 값 우선)
-        branch_id = body.branch_id or parent.branch_id
+        branch_id = req_branch_id or parent.branch_id
     else:
-        # parent_id가 없으면 해당 브랜치 루트를 보증하고 부모로 지정
+        # parent_id가 없으면 루트를 보장
+        branch_id = req_branch_id or "b_main"
         root = _get_or_create_root(db, branch_id)
         parent_id = root.id
 
     # 3) stats dict화
-    stats_dict = body.stats.model_dump(by_alias=True) if getattr(body.stats, "model_dump", None) else (body.stats or {})
+    stats_dict = (
+        body.stats.model_dump(by_alias=True)
+        if getattr(body.stats, "model_dump", None)
+        else (body.stats or {})
+    )
 
     # 4) INSERT
     turn = TurnModel(
@@ -114,8 +125,6 @@ def create_turn(db: Session, body: TurnCreate) -> TurnOut:
         raise ValueError("Failed to create Turn (constraint violation): " + str(e)) from e
 
     db.refresh(turn)
-
-    # 5) 응답
     return TurnOut(
         id=turn.id,
         parent_id=turn.parent_id,
