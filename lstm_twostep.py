@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import xgboost as xgb
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
@@ -12,16 +13,16 @@ from sklearn.metrics import accuracy_score, mean_absolute_error
 # ===================================================================
 print("--- 0. 데이터 준비 시작 ---")
 
-file_path = 'Screwed-Backend/data/MERGED_Climate.csv'
+file_path = 'Screwed-Backend/data/MERGED_NONAN_file.csv'
 df = pd.read_csv(file_path)
 
-columns_to_drop = ['CODE', 'YEAR', 'LAT', 'LON']
+columns_to_drop = ['CODE', 'YEAR', 'LAT', 'LON', 'MAIZE', 'WHEAT', 'RICE']
 # 파일에 해당 컬럼이 없을 경우 에러가 나지 않도록 errors='ignore' 옵션 추가
 df = df.drop(columns=columns_to_drop, errors='ignore')
 
 # 생산량 컬럼 이름을 'yield'로 변경
-if 'YIELD' in df.columns:
-    df = df.rename(columns={'YIELD': 'yield'})
+if 'SOYBEAN' in df.columns:
+    df = df.rename(columns={'SOYBEAN': 'yield'})
 
 # ✅ 1단계: 'yield' 컬럼의 NaN 값만 0으로 먼저 채웁니다.
 print(f"처리 전, yield 컬럼의 NaN 개수: {df['yield'].isnull().sum()}")
@@ -69,14 +70,38 @@ y_clf_test_tensor = torch.from_numpy(y_clf_test).unsqueeze(1).float() # ✅ .flo
 class ClassifierModel(nn.Module):
     def __init__(self, input_size):
         super(ClassifierModel, self).__init__()
-        self.linear1 = nn.Linear(input_size, 16)
+        
+        # 층을 순차적으로 정의
+        self.layer1 = nn.Linear(input_size, 32)
+        self.layer2 = nn.Linear(32, 64)
+        self.layer3 = nn.Linear(64, 32)
+        self.output_layer = nn.Linear(32, 1)
+        
+        # 활성화 함수 및 드롭아웃
         self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(16, 1)
-    
+        # Dropout: 과적합을 방지하기 위해 학습 중 일부 뉴런을 무작위로 끔
+        # p=0.5는 50%의 뉴런을 끈다는 의미
+        self.dropout = nn.Dropout(p=0.5)
+
     def forward(self, x):
-        out = self.linear1(x)
+        # 입력 데이터가 층을 순서대로 통과
+        
+        # 1번 은닉층
+        out = self.layer1(x)
         out = self.relu(out)
-        out = self.linear2(out)
+        
+        # 2번 은닉층
+        out = self.layer2(out)
+        out = self.relu(out)
+        out = self.dropout(out) # 과적합 방지를 위해 드롭아웃 적용
+        
+        # 3번 은닉층
+        out = self.layer3(out)
+        out = self.relu(out)
+        
+        # 출력층
+        out = self.output_layer(out)
+        
         return out
 
 # ✅ 수정된 부분: input_size를 num_features - 2로 변경
@@ -97,7 +122,7 @@ criterion_clf = nn.BCEWithLogitsLoss(pos_weight=weight)
 optimizer_clf = torch.optim.Adam(classifier.parameters(), lr=0.001)
 
 # --- 1-3. 분류 모델 학습 ---
-epochs = 20
+epochs = 10
 for epoch in range(epochs):
     outputs = classifier(X_clf_train_tensor)
     loss = criterion_clf(outputs, y_clf_train_tensor)
