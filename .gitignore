@@ -1,3 +1,6 @@
+data/
+
+=======
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -205,8 +208,17 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> e8b4ddc7877db43bec649ae3424f5d70347672e2
 # Installers / Large files
 Miniconda3-*.sh
 *.tar
 *.zip
 *.bin
+<<<<<<< HEAD
+>>>>>>> e8b4ddc7877db43bec649ae3424f5d70347672e2
+=======
+>>>>>>> e8b4ddc7877db43bec649ae3424f5d70347672e2
