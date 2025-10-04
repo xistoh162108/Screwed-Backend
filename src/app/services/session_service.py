@@ -64,7 +64,7 @@ def update(db: DBSession, session_id: str, body: SessionUpdate) -> Optional[Sess
         obj.root_turn_id = body.root_turn_id
     if body.meta is not None:
         obj.meta = body.meta
-    obj.updated_at = now_iso()
+    obj.updated_at = datetime.now(timezone.utc)
     db.add(obj)
     db.commit()
     db.refresh(obj)
