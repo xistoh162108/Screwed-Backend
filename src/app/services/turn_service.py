@@ -80,6 +80,8 @@ def _get_or_create_root(db: Session, branch_id: str) -> TurnModel:
     db.refresh(root)
     return root
 
+# app/services/turn_service.py
+
 def create_turn(db: Session, body: TurnCreate) -> TurnOut:
     tid = _new_id("t")
     created = now_iso()
@@ -100,21 +102,18 @@ def create_turn(db: Session, body: TurnCreate) -> TurnOut:
         root = _get_or_create_root(db, branch_id)
         parent_id = root.id
 
-    # 3) stats dict화
-    stats_dict = (
-        body.stats.model_dump(by_alias=True)
-        if getattr(body.stats, "model_dump", None)
-        else (body.stats or {})
-    )
+    stats_dict = {}                  # 빈 dict
+    month_val = created[:7]          # "YYYY-MM"
+    state_val = TurnStateModel.DRAFT # 최초 상태
 
     # 4) INSERT
     turn = TurnModel(
         id=tid,
         parent_id=parent_id,
         branch_id=branch_id,
-        month=created[:7],  # 예: "2025-10" 형식, created는 ISO string
-        state=TurnStateModel.DRAFT,  # 항상 DRAFT로 시작
-        stats={},  # 비어있는 dict
+        month=month_val,
+        state=state_val,
+        stats=stats_dict,
         created_at=created,
         updated_at=created,
     )
@@ -202,9 +201,17 @@ def create_child_same_branch(db: Session, parent_id: str, body: TurnCreate) -> O
     child_body = TurnCreate(
         parent_id=parent.id,
         branch_id=parent.branch_id,
-        month=body.month,
-        state=body.state,
-        stats=body.stats,
+    )
+    return create_turn(db, child_body)
+
+def create_branch_child(db: Session, parent_id: str, body: TurnCreate) -> Optional[TurnOut]:
+    parent = db.get(TurnModel, parent_id)
+    if not parent:
+        return None
+    new_branch_id = f"b_{uuid.uuid4().hex[:6]}"
+    child_body = TurnCreate(
+        parent_id=parent.id,
+        branch_id=new_branch_id,
     )
     return create_turn(db, child_body)
 
