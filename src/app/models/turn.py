@@ -1,14 +1,44 @@
-from sqlalchemy import Column, String, Enum, JSON, DateTime
-from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON  # 호환용
-from sqlalchemy.orm import relationship
-from sqlalchemy import ForeignKey
+# app/models/turn.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 import enum
 
-from app.db.base import Base
+from sqlalchemy import Column, String, Enum as SAEnum, ForeignKey, JSON as SAJSON
+from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 
-def now_iso():
-    return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+from app.db.base import Base
+from app.core.config import settings
+
+
+def now_iso() -> str:
+    return (
+        datetime.now(tz=timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def is_postgres_url(url: str) -> bool:
+    # postgresql / postgresql+psycopg / postgresql+pg8000 ... 모두 매칭
+    return url.startswith("postgresql")
+
+
+# ---------------------------------------------------------------------
+# JSON 타입 멀티백엔드 스위치
+#  - Postgres → JSONB
+#  - 그 외(SQLite 등) → 일반 JSON(+sqlite 변형)
+# ---------------------------------------------------------------------
+if is_postgres_url(settings.DATABASE_URL):
+    JSONType = JSONB
+else:
+    # SQLAlchemy의 일반 JSON 타입을 기본으로 쓰되,
+    # SQLite에선 dialiect 전용 JSON을 변형으로 지정
+    JSONType = SAJSON().with_variant(SQLITE_JSON, "sqlite")
+
 
 class TurnState(str, enum.Enum):
     DRAFT = "DRAFT"
@@ -22,8 +52,6 @@ class TurnState(str, enum.Enum):
     SIMULATED = "SIMULATED"
     APPLIED = "APPLIED"
 
-# SQLite JSON 타입 대비
-JSONType = JSON().with_variant(SQLITE_JSON, "sqlite")
 
 class Turn(Base):
     __tablename__ = "turns"
@@ -31,10 +59,26 @@ class Turn(Base):
     id = Column(String, primary_key=True, index=True)
     parent_id = Column(String, ForeignKey("turns.id"), nullable=True)
     branch_id = Column(String, index=True, nullable=True)
-    month = Column(String, index=True, nullable=False)         # "YYYY-MM"
-    state = Column(Enum(TurnState), index=True, nullable=False, default=TurnState.DRAFT)
-    stats = Column(JSONType, nullable=False, default=dict)     # 그대로 JSON 저장
+    month = Column(String, index=True, nullable=False)  # "YYYY-MM"
+
+    # enum은 python enum과 매칭되도록 SQLAlchemy Enum 사용
+    state = Column(
+        SAEnum(TurnState),
+        index=True,
+        nullable=False,
+        default=TurnState.DRAFT,
+    )
+
+    # 멀티백엔드 JSON 타입
+    stats = Column(JSONType, nullable=False, default=dict)
+
     created_at = Column(String, nullable=False, default=now_iso)
     updated_at = Column(String, nullable=False, default=now_iso)
 
-    parent = relationship("Turn", remote_side=[id], backref="children_rel", lazy="joined")
+    # 자기참조 관계 (부모/자식)
+    parent = relationship(
+        "Turn",
+        remote_side=[id],
+        backref="children_rel",
+        lazy="joined",
+    )
