@@ -14,5 +14,8 @@ celery.conf.update(
     worker_max_tasks_per_child=100,
     task_acks_late=True,
     broker_transport_options={"visibility_timeout": 3600},
-    imports=("app.services.output_task",),
+    imports=("app.services.output_task",
+              "app.services.command_task",
+            ),
 )
+

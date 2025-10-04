@@ -4,9 +4,15 @@ from typing import List, Optional, Dict, Any
 
 class CommandCreate(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
+    payload: dict | None = None
 
 class CommandIdOut(BaseModel):
     command_id: str
+    
+class CommandCreateOut(BaseModel):
+    command_id: str
+    output_id: str
+    task_id: str
 
 class CommandOut(BaseModel):
     id: str
