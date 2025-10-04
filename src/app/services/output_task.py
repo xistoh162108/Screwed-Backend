@@ -15,7 +15,7 @@ def run_llm_and_postprocess(command_id: str) -> dict:
         # "impact": {...}, "prediction": {...}, "delta_stats": {...}  # kind가 PROCESSED일 때 사용
     }
 
-@celery.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3, time_limit=120)
+@celery.task(name="app.services.output_task.generate_output_task", bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3, time_limit=120)
 def generate_output_task(self, output_id: str, command_id: str):
     db = SessionLocal()
     try:
