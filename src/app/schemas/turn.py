@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Literal, Dict, Any
+from datetime import datetime
 from enum import Enum
 
 class TurnState(str, Enum):
@@ -37,17 +38,18 @@ class TurnBase(BaseModel):
             return None
         return v
 
-class TurnCreate(TurnBase):
-    state: TurnState = TurnState.DRAFT
-    stats: Optional[Stats] = None
+class TurnCreate(BaseModel):
+    parent_id: Optional[str] = None
+    branch_id: Optional[str] = None
 
 class TurnUpdateStats(BaseModel):
     stats: Stats
 
 class TurnOut(TurnBase):
     id: str
+    session_id: str 
     children: List[str] = []
     state: TurnState
     stats: Stats = Stats()
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

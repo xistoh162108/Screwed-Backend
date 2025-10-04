@@ -65,3 +65,25 @@ def create_branch(turn_id: str, body: TurnCreate, db: Session = Depends(get_db))
     if not t:
         raise HTTPException(404, "Parent not found")
     return t
+
+@router.get("/{turn_id}/tree")
+def get_turn_tree_endpoint(
+    turn_id: str,
+    session_id: str = Query(..., description="Session ID to constrain the tree"),  # ★ 필수
+    max_nodes: int = Query(5000, ge=1, le=20000),
+    use_recursive_cte: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    try:
+        return turn_service.get_turn_tree(
+            db, turn_id,
+            session_id=session_id,               # ★ 전달
+            max_nodes=max_nodes,
+            use_recursive_cte=use_recursive_cte,
+        )
+    except ValueError as e:
+        msg = str(e).lower()
+        # 루트 미존재/세션 불일치 → 404가 UX상 더 직관적
+        if "not found" in msg or "does not belong" in msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
