@@ -112,9 +112,9 @@ def create_turn(db: Session, body: TurnCreate) -> TurnOut:
         id=tid,
         parent_id=parent_id,
         branch_id=branch_id,
-        month=body.month,
-        state=TurnStateModel(body.state.value),
-        stats=stats_dict,
+        month=created[:7],  # 예: "2025-10" 형식, created는 ISO string
+        state=TurnStateModel.DRAFT,  # 항상 DRAFT로 시작
+        stats={},  # 비어있는 dict
         created_at=created,
         updated_at=created,
     )
