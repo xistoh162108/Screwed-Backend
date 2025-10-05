@@ -3,10 +3,10 @@ import json
 import os
 
 # --- 설정 파일 경로 (실제 파일은 프로젝트 내에 있어야 합니다) ---
-questionTypeDeterminerPath = "Screwed-Backend/src/app/services/utils/questionTypeChecker.json"
-normalizeUserinputPath = "Screwed-Backend/src/app/services/utils/normalizeUserinput.json"
-procedureAnalyzerPath = "Screwed-Backend/src/app/services/utils/procedureAnalyzer.json"  # 새로 추가된 경로
-feedbackGeneratorPath = "Screwed-Backend/src/app/services/utils/feedbackGenerator.json" # 새로 추가된 경로
+questionTypeDeterminerPath = "Screwed-Backend/src/app/utils/questionTypeChecker.json"
+normalizeUserinputPath = "Screwed-Backend/src/app/utils/normalizeUserinput.json"
+procedureAnalyzerPath = "Screwed-Backend/src/app/utils/procedureAnalyzer.json"  # 새로 추가된 경로
+feedbackGeneratorPath = "Screwed-Backend/src/app/utils/feedbackGenerator.json" # 새로 추가된 경로
 
 # --- 유틸리티 함수 ---
 
@@ -204,7 +204,7 @@ def eventHandler(user_input):
     else: # user_type == 'O'
         # 8. 사교적/무시 응답
         return {
-            "final_response": "네, 알겠습니다. 농업 시스템 관련해서 도움이 필요할 때 언제든 말씀해 주세요!",
+            "final_response": "이해할 수 없습니다. 농업 시스템 관련해서 도움이 필요할 때 언제든 말씀해 주세요!",
             "status": "IGNORED"
         }
 
@@ -287,9 +287,7 @@ def start_interactive_mode():
                 # 아무 처리 없이 원본 응답을 그대로 사용합니다.
                 decoded_response = ai_response
 
-            normalized_response = normalizeInput(decoded_response).get("normalized", "")
-
-            print(f"💬 AI 비서: {normalized_response}")
+            print(f"💬 AI 비서: {decoded_response}")
 
         except KeyboardInterrupt: # Ctrl+C 입력 시 종료
             print("\n게임을 강제 종료합니다.")
