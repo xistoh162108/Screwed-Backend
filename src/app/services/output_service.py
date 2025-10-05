@@ -173,18 +173,16 @@ def set_failed(
     db.add(out)
     db.commit()
     
+# app/services/output_service.py (enqueue_output_from_command 내부만 수정)
 def enqueue_output_from_command(db: Session, command_id: str) -> str:
-    """
-    1) Output을 (없으면) 생성하고
-    2) Celery에 검증 태스크를 넣고
-    3) output_id를 반환
-    """
     res = create_from_command(db, command_id)
     output_id = res.output_id
-    # 큐 투입
+
+    # 지연 임포트로 순환 참조 방지
+    from app.workers.validate import validate_command_task
+
     async_result = validate_command_task.delay(command_id=command_id, output_id=output_id)
 
-    # task_id를 Output.models에 기록(선택)
     out = db.get(OutputModel, output_id)
     if out:
         models = out.models or {}

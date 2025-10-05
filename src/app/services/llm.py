@@ -1,20 +1,25 @@
 import google.generativeai as genai
-import json
 import os
 
 # --- 설정 파일 경로 (실제 파일은 프로젝트 내에 있어야 합니다) ---
-questionTypeDeterminerPath = "Screwed-Backend/src/app/services/utils/questionTypeChecker.json"
-normalizeUserinputPath = "Screwed-Backend/src/app/services/utils/normalizeUserinput.json"
-procedureAnalyzerPath = "Screwed-Backend/src/app/services/utils/procedureAnalyzer.json"  # 새로 추가된 경로
-feedbackGeneratorPath = "Screwed-Backend/src/app/services/utils/feedbackGenerator.json" # 새로 추가된 경로
 
-# --- 유틸리티 함수 ---
+from pathlib import Path
+import json
 
-def load_config(path):
-    """지정된 경로에서 JSON 설정 파일을 로드합니다."""
-    # 파일이 존재하지 않을 경우를 대비한 예외 처리 추가
+# 현재 파일: .../src/app/services/XXX.py
+HERE = Path(__file__).resolve()
+APP_DIR = HERE.parents[1]          # .../src/app
+UTILS_DIR = APP_DIR / "utils"      # .../src/app/utils
+
+# 파일 경로 정의 (services/utils 가 아니라 utils)
+questionTypeDeterminerPath = str(UTILS_DIR / "questionTypeChecker.json")
+normalizeUserinputPath    = str(UTILS_DIR / "normalizeUserinput.json")
+procedureAnalyzerPath     = str(UTILS_DIR / "procedureAnalyzer.json")
+feedbackGeneratorPath     = str(UTILS_DIR / "feedbackGenerator.json")
+
+def load_config(path: str):
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         print(f"Error: Configuration file not found at {path}")
@@ -80,7 +85,7 @@ def determineQuestionType(normalizedData):
     """
     정규화된 입력 텍스트를 Q(질문), I(명령), O(기타) 중 하나로 분류합니다.
     """
-    message_text = normalizedData.get("normalized", "")
+    message_text = normalizedData.get("normalized_text", "")
     contents = [{"role": "user", "parts": [{"text": message_text}]}]
     
     # 'questionTypeDeterminerPath' 모델 호출
@@ -247,11 +252,13 @@ def test_event_handler():
 
 def start_interactive_mode():
     """사용자와 직접 상호작용하는 메인 함수."""
+    """
     print("--- 농업 시뮬레이션 게임 AI 비서 ---")
     print("안녕하세요! 무엇을 도와드릴까요?")
     print("(게임을 종료하려면 '종료' 또는 'exit'를 입력하세요)")
-    
-    api_key = os.getenv("GEMINI_API_KEY")
+    """
+
+    api_key = "AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc"
     if not api_key:
         print("\n[오류] GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
         print("게임을 시작하기 전에 API 키를 설정해주세요.")
@@ -287,7 +294,7 @@ def start_interactive_mode():
                 # 아무 처리 없이 원본 응답을 그대로 사용합니다.
                 decoded_response = ai_response
 
-            normalized_response = normalizeInput(decoded_response).get("normalized", "")
+            normalized_response = normalizeInput(decoded_response).get("normalized_text", decoded_response)
 
             print(f"💬 AI 비서: {normalized_response}")
 
@@ -297,5 +304,7 @@ def start_interactive_mode():
         except Exception as e:
             print(f"[알 수 없는 오류 발생]: {e}")
 
-start_interactive_mode()
-#test_event_handler()
+if __name__ == "__main__":
+    # 로컬에서만 인터랙티브 테스트할 때 수동으로 켜세요
+    start_interactive_mode()
+    # 또는 test_event_handler()
