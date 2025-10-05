@@ -2,6 +2,9 @@
 
 **NASA Space Apps Challenge 2024** - Agricultural Climate Simulation Game Backend
 
+How to use: 
+API: https://api.tedxkaist.org/api/v1/docs#
+
 A FastAPI-based backend service that combines climate prediction ML models with LLM-driven natural language processing to create an educational farming simulation game. Players make agricultural decisions through natural language commands, and the system predicts crop yields based on NASA climate data.
 
 ---
