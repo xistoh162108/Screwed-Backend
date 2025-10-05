@@ -26,7 +26,7 @@ class Command(Base):
     text = Column(String, nullable=False)                      # 자연어 지시
     validity = Column(JSONType, nullable=True)                 # {is_valid, score, reasons[]}
     cost = Column(JSONType, nullable=True)                     # {estimate, currency, breakdown[]}
-
+    payload = Column(SAJSON, nullable=True) 
     created_at = Column(String, nullable=False, default=now_iso)
 
     # 관계(옵션): 필요 시 역참조 사용

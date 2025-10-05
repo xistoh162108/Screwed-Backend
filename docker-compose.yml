@@ -37,8 +37,7 @@ services:
       - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    command: >
-      celery -A app.core.celery_app.celery worker --loglevel=info -Q celery -c 4
+    command: bash -lc "celery -A app.core.celery_app worker -Q validation -l INFO"
 
   flower:
     image: mher/flower

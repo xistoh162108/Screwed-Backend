@@ -9,7 +9,8 @@ celery[redis]>=5.3
 redis
 google-genai
 numpy
-pytorch
+torch
 pandas
 joblib
 lightgbm
+google.generativeai

@@ -16,6 +16,7 @@ celery.conf.update(
     broker_transport_options={"visibility_timeout": 3600},
     imports=("app.services.output_task",
               "app.services.command_task",
+              "app.services.prediction_task",
             ),
 )
 

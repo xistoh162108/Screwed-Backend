@@ -192,3 +192,30 @@ def enqueue_output_from_command(db: Session, command_id: str) -> str:
         db.commit()
 
     return output_id
+
+def set_prediction_only(
+    db: Session,
+    *,
+    output_id: str,
+    prediction: Optional[Dict[str, Any]] = None,
+    impact: Optional[Dict[str, Any]] = None,
+    delta_stats: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    이미 COMPLETE된 Output에 예측/영향/델타 통계만 갱신.
+    state/kind/answer는 건드리지 않음.
+    """
+    out = db.get(OutputModel, output_id)
+    if not out:
+        raise ValueError(f"Output not found: {output_id}")
+
+    # 부분 업데이트
+    if prediction is not None:
+        out.prediction = prediction
+    if impact is not None:
+        out.impact = impact
+    if delta_stats is not None:
+        out.delta_stats = delta_stats
+
+    db.add(out)
+    db.commit()

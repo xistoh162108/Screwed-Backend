@@ -54,15 +54,26 @@ def validate_command_task(command_id: str, output_id: str):
         }
 
         # 상태 매핑
-        if status in ("COMPLETED", "ANSWERED"):
+        if status in ("COMPLETED","ANSWERED"):
             outsvc.set_complete_answer(
-                db,
-                output_id=output_id,
-                answer_text=final_response,
-                models_meta=models_meta,
-                # 필요 시 assumptions/impact/prediction/delta_stats 확장 가능
+                db, output_id=output_id, answer_text=final, models_meta=models_meta
             )
-            logger.info("Output %s → COMPLETE/ANSWER", output_id)
+            # ★ 예측 태스크 발사 (원하시는 파라미터로)
+            # 제공해준 변수 리스트 기본 세트
+            VARIABLES = [
+                "ALLSKY_SFC_LW_DWN","ALLSKY_SFC_PAR_TOT","ALLSKY_SFC_SW_DIFF","ALLSKY_SFC_SW_DNI",
+                "ALLSKY_SFC_SW_DWN","ALLSKY_SFC_UVA","ALLSKY_SFC_UVB","ALLSKY_SFC_UV_INDEX",
+                "ALLSKY_SRF_ALB","CLOUD_AMT","CLRSKY_SFC_PAR_TOT","CLRSKY_SFC_SW_DWN",
+                "GWETPROF","GWETROOT","GWETTOP","PRECTOTCORR","PRECTOTCORR_SUM","PS","QV2M",
+                "RH2M","T2M","T2MDEW","T2MWET","T2M_MAX","T2M_MIN","T2M_RANGE","TOA_SW_DWN","TS"
+            ]
+            run_prediction_task.delay(
+                output_id=output_id,
+                variables=VARIABLES,
+                location={"lat": 37.6, "lon": 127.0},  # TODO: 실제 좌표/필드에서 가져오기
+                horizon_days=30,
+                context={"answer": final},
+            )
 
         elif status == "VIOLATION":
             outsvc.set_complete_denied(

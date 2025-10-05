@@ -15,7 +15,7 @@ services:
   worker:
     profiles: ["dev"]
     # Celery 엔트리 경로도 동일 규칙(예: app.core.celery_app:celery)
-    command: celery -A app.core.celery_app.celery worker --loglevel=info -Q celery -c 4
+    command: bash -lc "celery -A app.core.celery_app worker -Q validation -l INFO"
     environment:
       - GOOGLE_API_KEY=AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc
       - PYTHONPATH=/app

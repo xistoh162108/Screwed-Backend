@@ -50,6 +50,7 @@ def create_and_enqueue_validation(db: Session, turn_id: str, body: CommandCreate
         text=body.text,
         created_at=_now_iso(),   # 문자열로 저장해도 무방
         # 필요 시 payload 저장 칼럼이 있으면 여기에 body.payload 반영
+        payload=body.payload or {},
     )
     db.add(cmd)
     db.commit()
