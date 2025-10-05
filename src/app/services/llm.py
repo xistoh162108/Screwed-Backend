@@ -1,10 +1,16 @@
 import google.generativeai as genai
 import os
+import numpy as np
+import pandas as pd
 
 # --- 설정 파일 경로 (실제 파일은 프로젝트 내에 있어야 합니다) ---
 
 from pathlib import Path
 import json
+
+# 파일 모듈
+from app.services.climate_inference import ClimatePredictor
+from app.services.yield_inference import MAIZE_PredictorLGBM, WHEAT_PredictorLGBM, RICE_PredictorLGBM, SOYBEAN_PredictorLGBM
 
 # 현재 파일: .../src/app/services/XXX.py
 HERE = Path(__file__).resolve()
@@ -16,6 +22,78 @@ questionTypeDeterminerPath = str(UTILS_DIR / "questionTypeChecker.json")
 normalizeUserinputPath    = str(UTILS_DIR / "normalizeUserinput.json")
 procedureAnalyzerPath     = str(UTILS_DIR / "procedureAnalyzer.json")
 feedbackGeneratorPath     = str(UTILS_DIR / "feedbackGenerator.json")
+
+# ML 모델 관련 파일 경로
+ARTIFACTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts")
+MODEL_PATH = os.path.join(ARTIFACTS_DIR, "model.pt")
+NORM_PATH = os.path.join(ARTIFACTS_DIR, "normalizer_stats.json")
+CALIB_PATH = os.path.join(ARTIFACTS_DIR, "calibration.json")
+    
+FEATURES = [
+    'ALLSKY_SFC_LW_DWN','ALLSKY_SFC_PAR_TOT','ALLSKY_SFC_SW_DIFF','ALLSKY_SFC_SW_DNI',
+    'ALLSKY_SFC_SW_DWN','ALLSKY_SFC_UVA','ALLSKY_SFC_UVB','ALLSKY_SFC_UV_INDEX',
+    'ALLSKY_SRF_ALB','CLOUD_AMT','CLRSKY_SFC_PAR_TOT','CLRSKY_SFC_SW_DWN',
+    'GWETPROF','GWETROOT','GWETTOP','PRECTOTCORR','PRECTOTCORR_SUM','PS','QV2M',
+    'RH2M','T2M','T2MDEW','T2MWET','T2M_MAX','T2M_MIN','T2M_RANGE','TOA_SW_DWN','TS'
+]
+
+# --- ML 모델 초기화 (스크립트 로드 시 1회만 실행) ---
+predictor = None
+if ClimatePredictor and os.path.exists(MODEL_PATH):
+    try:
+        predictor = ClimatePredictor(
+            model_path=MODEL_PATH,
+            normalizer_stats_path=NORM_PATH,
+            calibration_path=CALIB_PATH,
+            feature_names=FEATURES,
+            sequence_length=6
+        )
+        print("ClimatePredictor 모델이 성공적으로 로드되었습니다.")
+    except Exception as e:
+        print(f"[오류] ClimatePredictor 모델 로딩 실패: {e}")
+else:
+    print("[경고] ClimatePredictor 모델을 로드할 수 없습니다. 시뮬레이션이 더미 모드로 작동합니다.")
+
+predictors = {
+    "climate": None,
+    "yield": {}
+}
+
+# 기후 예측 모델 로드
+if ClimatePredictor and os.path.exists(MODEL_PATH):
+    try:
+        predictors["climate"] = ClimatePredictor(
+            model_path=MODEL_PATH,
+            normalizer_stats_path=NORM_PATH,
+            calibration_path=CALIB_PATH,
+            feature_names=FEATURES, # ClimatePredictor가 사용하는 피처
+            sequence_length=6
+        )
+        print("ClimatePredictor model loaded successfully.")
+    except Exception as e:
+        print(f"[오류] ClimatePredictor 모델 로딩 실패: {e}")
+
+# 각 작물별 생산량 예측 모델 로드
+# (실제로는 각 모델의 artifacts 경로를 정확히 지정해야 합니다)
+CROP_MODELS = {
+    "MAIZE": MAIZE_PredictorLGBM,
+    "WHEAT": WHEAT_PredictorLGBM,
+    "RICE": RICE_PredictorLGBM,
+    "SOYBEAN": SOYBEAN_PredictorLGBM,
+}
+
+for crop_name, PredictorClass in CROP_MODELS.items():
+    if PredictorClass:
+        try:
+            # 각 작물 모델의 경로를 crop_name을 이용해 구성 (예: artifacts/MAIZE/)
+            crop_artifact_dir = os.path.join(ARTIFACTS_DIR, crop_name)
+            if os.path.exists(crop_artifact_dir):
+                predictors["yield"][crop_name] = PredictorClass(artifacts_dir=crop_artifact_dir)
+                print(f"{crop_name} Yield Predictor model loaded successfully.")
+        except Exception as e:
+            print(f"[오류] {crop_name} Yield Predictor 모델 로딩 실패: {e}")
+
+
 
 def load_config(path: str):
     try:
@@ -146,19 +224,97 @@ def isCompleted(structured_command):
 
     return {"final_response": final_feedback, "status": "COMPLETED"}
 
-def _run_game_simulation(command):
-    """
-    실제 게임 엔진 로직을 시뮬레이션하는 더미 함수입니다.
-    이 부분은 AI/데이터 분석 팀이 개발해야 할 영역입니다.
-    """
-    # 예시: 작물 심기가 성공했고, 다음 달 예상 물 소비량 증가를 시뮬레이션했다고 가정
-    return {
+# llm.py의 _run_game_simulation 함수
+
+def _run_game_simulation(command: dict, current_state: dict) -> tuple[dict, dict]:
+    """기후 예측과 생산량 예측 ML 모델을 순차적으로 호출하여 다음 상태를 시뮬레이션합니다."""
+    
+    climate_predictor = predictors.get("climate")
+    if not climate_predictor:
+        raise RuntimeError("기후 예측 모델이 로드되지 않았습니다.")
+
+    new_state = current_state.copy()
+    
+    # --- 1단계: 다음 달 기후 예측 ---
+    climate_history = new_state["climate_history"]
+    x_window_climate = climate_history[-6:] # 최근 6개월 데이터
+
+    # (사용자 명령이 있다면 x_window_climate에 미리 반영 - 이전 로직과 동일)
+    if command.get("intent") == "modify_climate":
+        
+        # 1. LLM이 분석한 상세 파라미터를 가져옵니다.
+        params = command.get("parameters", {})
+        variable = params.get("variable")  # 예: "T2M" (2m 온도)
+        value_str = str(params.get("value", "0")) # 예: "+2" 또는 "-50"
+
+        # 2. 문자열로 된 값을 숫자(float)로 변환합니다.
+        try:
+            value = float(value_str)
+        except (ValueError, TypeError):
+            value = 0.0
+
+        # 3. 가장 최근 기후 데이터에 변경 사항을 적용합니다.
+        if variable and value != 0.0:
+            # x_window_climate는 딕셔너리의 리스트입니다.
+            # 그 중 가장 마지막 달의 기후 데이터(딕셔너리)를 안전하게 복사합니다.
+            latest_climate_data = x_window_climate[-1].copy()
+            
+            # 해당 변수(예: 'T2M')가 데이터에 있는지 확인하고 값을 더합니다.
+            if variable in latest_climate_data:
+                latest_climate_data[variable] += value
+                # 원본 리스트의 마지막 요소를 변경된 데이터로 교체합니다.
+                x_window_climate[-1] = latest_climate_data
+
+    x_window_np = np.array([[month_data[feat] for feat in FEATURES] for month_data in x_window_climate])
+    
+    mu_o, _, _, _, _, month_next = climate_predictor.predict_next(
+        x_window=x_window_np, month_now=new_state["month"],
+        lat=new_state["lat"], lon=new_state["lon"], return_original_scale=True
+    )
+    predicted_climate = {name: float(val) for name, val in zip(FEATURES, mu_o)}
+
+    # --- 2단계: 예상 수확량 예측 ---
+    yield_prediction = {}
+    current_crop = new_state.get("current_crop") # 예: "MAIZE"
+    
+    if current_crop and current_crop in predictors["yield"]:
+        yield_predictor = predictors["yield"][current_crop]
+        
+        # 생산량 모델 입력 데이터 준비 (과거 2개월 + 예측된 1개월 = 총 3개월)
+        # 참고: 생산량 모델이 3개월 데이터를 받는다고 가정. 모델에 따라 길이는 조절 필요
+        x_window_yield = climate_history[-2:] + [predicted_climate]
+        
+        # 생산량 모델은 DataFrame을 입력으로 받을 수 있음
+        yield_input_df = pd.DataFrame(x_window_yield)
+        
+        # predict 메소드는 DataFrame을 반환
+        prediction_df = yield_predictor.predict(yield_input_df)
+        
+        # 결과 DataFrame에서 예측 값 추출
+        predicted_yield_value = prediction_df["PpA_pred"].iloc[0]
+        yield_prediction = {current_crop: predicted_yield_value}
+
+    # --- 3단계: 게임 상태 업데이트 ---
+    cost = 50 
+    new_state["money"] -= cost
+    new_state["turn"] += 1
+    new_state["month"] = month_next
+    new_state["climate_history"].append(predicted_climate)
+    
+    # --- 4단계: 피드백용 결과 생성 ---
+    result_for_feedback = {
         "command_status": "SUCCESS",
-        "cost": 50,
-        "credit_balance": 950,
-        "next_month_water_stress_index": 0.25,
-        "current_crop": command.get("crop")
+        "cost": cost,
+        "balance": new_state["money"],
+        "action_taken": command,
+        "prediction": {
+            "next_month": month_next,
+            "climate": predicted_climate,
+            "yield": yield_prediction  # 수확량 예측 결과 추가!
+        }
     }
+    
+    return result_for_feedback, new_state
 
 
 def eventHandler(user_input):
