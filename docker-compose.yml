@@ -12,6 +12,7 @@ services:
     depends_on:
       - redis
     environment:
+      - GOOGLE_API_KEY=AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc
       - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -32,6 +33,7 @@ services:
     depends_on:
       - redis
     environment:
+      - GOOGLE_API_KEY=AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc
       - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0

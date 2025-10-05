@@ -3,6 +3,7 @@ services:
     profiles: ["dev"]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload  # ← 변수명이 app일 때
     environment:
+      - GOOGLE_API_KEY=AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc
       - PYTHONPATH=/app
       - ENV=dev
     volumes:
@@ -16,6 +17,7 @@ services:
     # Celery 엔트리 경로도 동일 규칙(예: app.core.celery_app:celery)
     command: celery -A app.core.celery_app.celery worker --loglevel=info -Q celery -c 4
     environment:
+      - GOOGLE_API_KEY=AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc
       - PYTHONPATH=/app
       - ENV=dev
       - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed}
