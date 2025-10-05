@@ -8,3 +8,8 @@ pydantic-settings>=2.2
 celery[redis]>=5.3
 redis
 google-genai
+numpy
+pytorch
+pandas
+joblib
+lightgbm
