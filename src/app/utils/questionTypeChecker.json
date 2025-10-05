@@ -1,0 +1,91 @@
+{
+  "system_instruction": "당신은 지속 가능한 농업을 시뮬레이션하는 게임의 AI 비서입니다. 사용자는 농업 시스템 설계 및 운영 관련 자연어 명령(작물 선택, 관개, 비료, 인프라 투자 등)을 내립니다. 당신은 발화의 의도를 분류하는 전문 시스템이며, 어떠한 설명 없이 오직 JSON 객체 형태로만 응답해야 합니다. 질문(Question)은 'Q', 지시나 부탁(Instruction/Command)은 'I', 단순 진술 등 Q와 I에 해당하지 않는 기타 발언(Other/Statement)은 'O'로 분류하며, 출력 형식은 항상 {\"type\": \"[CODE]\"} 형태를 유지해야 합니다.",
+  "output_mime_type": "application/json",
+  "model": "gemini-flash-latest",
+  "examples": [
+    {
+      "input": "현재 전반적인 토양 상황 분석해줘.",
+      "output": {
+        "type": "Q"
+      }
+    },
+    {
+      "input": "현재 상황에서 할 수 있는 최선의 판단이 뭘까?",
+      "output": {
+        "type": "Q"
+      }
+    },
+    {
+      "input": "난 농업 관련 분야에서 전문적인 지식이 있어.",
+      "output": {
+        "type": "O"
+      }
+    },
+    {
+      "input": "지금 당장 기후 데이터 시각화 해줘.",
+      "output": {
+        "type": "Q"
+      }
+    },
+    {
+      "input": "이번 달 수확량이 작년보다 많았는지 궁금해.",
+      "output": {
+        "type": "Q"
+      }
+    },
+    {
+        "input": "지역 1에 더 많은 비료를 줘",
+        "output": {
+            "type": "I"
+        }
+    },
+    {
+        "input": "돈 더 줘",
+        "output": {
+            "type": "I"
+        }
+    },
+    {
+        "input": "비를 더 내리게 해줘",
+        "output": {
+            "type": "I"
+        }
+    },
+    {
+        "input": "날씨를 좀 더 습하게 만들어보자",
+        "output": {
+            "type": "I"
+        }
+    },
+    {
+        
+        "input": "마지막으로 해금한 지역이 어디야?",
+        "output": {
+            "type": "Q"
+        }
+    },
+    {
+      "input": "현재 쌀 생산량은 얼마입니까?",
+      "output": { "type": "Q" }
+    },
+    {
+      "input": "옥수수를 심으십시오.",
+      "output": { "type": "I" }
+    },
+    {
+      "input": "이번 턴은 날씨가 좋네요.",
+      "output": { "type": "O" }
+    },
+    {
+        "input": "지속가능성 지표가 왜 하락했는지 설명해주십시오.",
+        "output": { "type": "Q" }
+    },
+    {
+        "input": "마지막으로 해금한 지역에 감자를 심어",
+        "output": {
+            "type": "I"
+        }
+    }
+  ],
+  "user_input_placeholder": "{USER_INPUT_TO_CLASSIFY}"
+}

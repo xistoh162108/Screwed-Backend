@@ -1,37 +1,17 @@
-# app/models/turn.py
 from __future__ import annotations
-
-from datetime import datetime, timezone
 import enum
+from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Enum as SAEnum, ForeignKey, JSON as SAJSON
-from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
+from sqlalchemy import Column, String, ForeignKey, func, DateTime
+from sqlalchemy.types import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
-from app.core.config import settings
+# (참고) 문자열이 아니라 datetime 객체가 필요하면 이렇게 사용하세요.
+def now_dt() -> datetime:
+    return datetime.now(tz=timezone.utc)
 
-
-def now_iso() -> str:
-    return (
-        datetime.now(tz=timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-
-
-def is_postgres_url(url: str) -> bool:
-    # postgresql / postgresql+psycopg / postgresql+pg8000 ... 모두 매칭
-    return url.startswith("postgresql")
-
-
-# ---------------------------------------------------------------------
-# JSON 타입 멀티백엔드 스위치
-#  - Postgres → JSONB
-#  - 그 외(SQLite 등) → 일반 JSON(+sqlite 변형)
-# ---------------------------------------------------------------------
 JSONType = JSONB
 
 class TurnState(str, enum.Enum):
@@ -53,23 +33,31 @@ class Turn(Base):
     id = Column(String, primary_key=True, index=True)
     parent_id = Column(String, ForeignKey("turns.id"), nullable=True)
     branch_id = Column(String, index=True, nullable=True)
+    session_id = Column(String, ForeignKey("sessions.id"), nullable=False, index=True)
     month = Column(String, index=True, nullable=False)  # "YYYY-MM"
 
-    # enum은 python enum과 매칭되도록 SQLAlchemy Enum 사용
     state = Column(
-        SAEnum(TurnState),
+        SQLEnum(TurnState, name="turn_state", native_enum=True),  # name을 주는게 PG에서 안전
         index=True,
         nullable=False,
         default=TurnState.DRAFT,
     )
 
-    # 멀티백엔드 JSON 타입
     stats = Column(JSONType, nullable=False, default=dict)
 
-    created_at = Column(String, nullable=False, default=now_iso)
-    updated_at = Column(String, nullable=False, default=now_iso)
+    # ✅ 문자열이 아니라 타임스탬프 컬럼로 변경
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
-    # 자기참조 관계 (부모/자식)
     parent = relationship(
         "Turn",
         remote_side=[id],

@@ -6,7 +6,7 @@ from app.api.v1 import api_router as api_v1_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version="1.0.0",
+    version=settings.API_VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=f"{settings.API_V1_STR}/docs",
     redoc_url=None,

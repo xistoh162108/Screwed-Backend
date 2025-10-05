@@ -1,0 +1,85 @@
+services:
+  redis:
+    image: redis:7
+    container_name: screwed-redis
+    # 내부 통신만
+    # ports:
+    #   - "6379:6379"
+
+  backend:
+    build: .
+    container_name: screwed-backend
+    depends_on:
+      - redis
+    environment:
+      - GOOGLE_API_KEY=AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc
+      - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+      # nginx-proxy & Let's Encrypt
+      - VIRTUAL_HOST=api.tedxkaist.org
+      - LETSENCRYPT_HOST=api.tedxkaist.org
+      - LETSENCRYPT_EMAIL=xistoh162108@kaist.ac.kr
+
+    expose:
+      - "8000"
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build: .
+    container_name: screwed-worker
+    depends_on:
+      - redis
+    environment:
+      - GOOGLE_API_KEY=AIzaSyCPbFbFjbAeAbFWkCIeLTnOPy8DQ4YxAvc
+      - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: >
+      celery -A app.core.celery_app.celery worker --loglevel=info -Q celery -c 4
+
+  flower:
+    image: mher/flower
+    container_name: screwed-backend-flower
+    depends_on:
+      - redis
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - VIRTUAL_HOST=flower.api.tedxkaist.org
+      - LETSENCRYPT_HOST=flower.api.tedxkaist.org
+      - LETSENCRYPT_EMAIL=xistoh162108@kaist.ac.kr
+    expose:
+      - "5555"
+    command: celery flower
+
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs:ro
+      - vhost_d:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: nginx-letsencrypt
+    environment:
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+    volumes:
+      - certs:/etc/nginx/certs:rw        # ← 쓰기 권한 필요
+      - vhost_d:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - nginx-proxy
+
+volumes:
+  certs:
+  vhost_d:
+  html:

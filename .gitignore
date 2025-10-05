@@ -212,3 +212,5 @@ Miniconda3-*.sh
 *.tar
 *.zip
 *.bin
+
+docker-compose.override.yml
