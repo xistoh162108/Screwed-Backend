@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.db.base import Base  # 프로젝트의 Base import 경로에 맞추세요
 
@@ -10,6 +11,7 @@ def now_iso():
 # 변경 (datetime 객체 반환)
 def now_dt():
     return datetime.now(tz=timezone.utc)
+
 class Session(Base):
     __tablename__ = "sessions"
 
@@ -22,3 +24,7 @@ class Session(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(),
                         onupdate=func.now(), nullable=False)
+
+    # Relationships
+    economy = relationship("SessionEconomy", back_populates="session", uselist=False, cascade="all, delete-orphan")
+    crop_stats = relationship("SessionCropStats", back_populates="session", cascade="all, delete-orphan")

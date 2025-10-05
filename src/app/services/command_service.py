@@ -50,10 +50,12 @@ def create_and_enqueue_validation(db: Session, turn_id: str, body: CommandCreate
         text=body.text,
         created_at=_now_iso(),   # 문자열로 저장해도 무방
         # 필요 시 payload 저장 칼럼이 있으면 여기에 body.payload 반영
+        payload=body.payload or {},
     )
     db.add(cmd)
     db.commit()
 
+    db.refresh(cmd)
     # 3) Output(PENDING) 생성 (이 Command의 검증 결과를 담는 그릇)
     out_id_obj = output_service.create_from_command(db, cid)  # 멱등 처리 포함
     output_id = out_id_obj.output_id
@@ -62,6 +64,7 @@ def create_and_enqueue_validation(db: Session, turn_id: str, body: CommandCreate
     async_result = validate_command_task.delay(command_id=cid, output_id=output_id)
 
     # 5) task_id 저장(선택) — Output.models에 task_id 넣기
+    from app.models import Output as OutputModel
     out = db.get(OutputModel, output_id)
     if out:
         models = out.models or {}

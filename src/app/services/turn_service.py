@@ -1,14 +1,14 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, union_all
 from sqlalchemy.exc import IntegrityError, NoResultFound  # 추가
-from typing import List, Optional, Dict, Any, Deque
+from typing import List, Optional, Dict, Any, Deque, Tuple
 from collections import deque
 import uuid
 from datetime import datetime, timezone
 
 from app.models import Turn as TurnModel, TurnState as TurnStateModel
 from app.schemas import TurnCreate, TurnUpdateStats, TurnOut, TurnState, Stats
-
+from app.schemas.turns_crash import CrashNodeInput
 # app/services/turn_service.py (상단 유틸 근처)
 import uuid
 
@@ -402,3 +402,80 @@ def get_turn_tree(
                 node["children"].append(nodes[ch.id])
 
         return nodes[root_turn_id]
+    
+class ETagMismatch(Exception):
+    pass
+
+class TimelineConflict(Exception):
+    def __init__(self, latest_id: str, latest_etag: str, branch_id: str, msg: str = "current_id is not latest"):
+        super().__init__(msg)
+        self.latest_id = latest_id
+        self.latest_etag = latest_etag
+        self.branch_id = branch_id
+
+# --- ETag 헬퍼: updated_at 기반 (원하면 해시로 바꿔도 됨) ---
+def _etag_for_turn(obj: TurnModel) -> str:
+    # 약한 ETag 표기
+    return f'W/"{obj.updated_at}"'
+
+# --- 브랜치 최신 턴 판정: 같은 session + 같은 branch에서 '자식이 없는' 노드를 최신으로 봄 ---
+def _get_latest_in_branch(db: Session, base: TurnModel) -> TurnModel:
+    # 최신 후보 = 같은 (session_id, branch_id)인데 children가 없는 노드
+    q = (
+        db.query(TurnModel)
+          .filter(
+              TurnModel.session_id == base.session_id,
+              TurnModel.branch_id == base.branch_id
+          )
+          .order_by(TurnModel.updated_at.desc(), TurnModel.id.desc())
+    )
+    candidates = q.all()
+    if not candidates:
+        return base
+    # children 없는 첫 번째를 최신으로
+    for cand in candidates:
+        has_child = db.query(TurnModel).filter(TurnModel.parent_id == cand.id,
+                                               TurnModel.session_id == base.session_id).first()
+        if not has_child:
+            return cand
+    # 모두가 부모라면(희귀) 가장 최근 업데이트를 최신으로 간주
+    return candidates[0]
+
+# --- 본체: crash 처리 ---
+def crash_turn(db: Session, body: CrashNodeInput, if_match: Optional[str]) -> Tuple[TurnOut, int]:
+    cur = db.get(TurnModel, body.current_id)
+    if not cur:
+        raise ValueError(f"Turn not found: {body.current_id}")
+
+    # If-Match 검사 (옵션)
+    if if_match:
+        current_etag = _etag_for_turn(cur)
+        if if_match.strip() != current_etag:
+            raise ETagMismatch()
+
+    latest = _get_latest_in_branch(db, cur)
+    latest_etag = _etag_for_turn(latest)
+
+    # 최신이면 같은 브랜치로 '자식' 턴 생성
+    if latest.id == cur.id and latest.session_id == cur.session_id:
+        child_body = TurnCreate(parent_id=cur.id, branch_id=cur.branch_id)
+        created = create_turn(db, child_body)
+
+        # stats 반영
+        upd = TurnUpdateStats(stats=Stats.model_validate({"__root__": body.stats}).__root__)
+        created = update_stats(db, created.id, upd)  # created는 TurnOut → id로 다시 업데이트
+
+        return created, 201  # Created
+
+    # 최신이 아니면 충돌
+    if (body.resolution or "").upper() == "FORK":
+        # 새 브랜치로 포크
+        new_branch_id = _new_branch_id()
+        fork_body = TurnCreate(parent_id=cur.id, branch_id=new_branch_id)
+        created = create_turn(db, fork_body)
+        upd = TurnUpdateStats(stats=Stats.model_validate({"__root__": body.stats}).__root__)
+        created = update_stats(db, created.id, upd)
+        return created, 201
+
+    # 포크 원치 않으면 409
+    raise TimelineConflict(latest_id=latest.id, latest_etag=latest_etag, branch_id=cur.branch_id)
