@@ -11,6 +11,7 @@ services:
     container_name: screwed-backend
     depends_on:
       - redis
+      - nginx-proxy
     environment:
       - DATABASE_URL=postgresql+psycopg://xistoh:mk685700@34.64.87.169:5432/screwed
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -20,11 +21,13 @@ services:
       - VIRTUAL_HOST=api.tedxkaist.org
       - LETSENCRYPT_HOST=api.tedxkaist.org
       - LETSENCRYPT_EMAIL=xistoh162108@kaist.ac.kr
+      - VIRTUAL_PORT=8000
 
     expose:
       - "8000"
     command: >
       uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
 
   worker:
     build: .
