@@ -8,14 +8,14 @@ import pandas as pd
 from pathlib import Path
 import json
 
-# 파일 모듈
-from app.services.climate_inference import ClimatePredictor
-from app.services.yield_inference import MAIZE_PredictorLGBM, WHEAT_PredictorLGBM, RICE_PredictorLGBM, SOYBEAN_PredictorLGBM
-
 # 현재 파일: .../src/app/services/XXX.py
 HERE = Path(__file__).resolve()
 APP_DIR = HERE.parents[1]          # .../src/app
 UTILS_DIR = APP_DIR / "utils"      # .../src/app/utils
+
+# 파일 모듈
+from climate_inference import ClimatePredictor
+from yield_inference import MAIZE_PredictorLGBM, WHEAT_PredictorLGBM, RICE_PredictorLGBM, SOYBEAN_PredictorLGBM
 
 # 파일 경로 정의 (services/utils 가 아니라 utils)
 questionTypeDeterminerPath = str(UTILS_DIR / "questionTypeChecker.json")
@@ -24,10 +24,12 @@ procedureAnalyzerPath     = str(UTILS_DIR / "procedureAnalyzer.json")
 feedbackGeneratorPath     = str(UTILS_DIR / "feedbackGenerator.json")
 
 # ML 모델 관련 파일 경로
-ARTIFACTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts")
-MODEL_PATH = os.path.join(ARTIFACTS_DIR, "model.pt")
-NORM_PATH = os.path.join(ARTIFACTS_DIR, "normalizer_stats.json")
-CALIB_PATH = os.path.join(ARTIFACTS_DIR, "calibration.json")
+PROJECT_ROOT = HERE.parents[3]
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+print(ARTIFACTS_DIR)
+MODEL_PATH = os.path.join(ARTIFACTS_DIR, "predictClimate/model.pt")
+NORM_PATH = os.path.join(ARTIFACTS_DIR, "predictClimate/normalizer_stats.json")
+CALIB_PATH = os.path.join(ARTIFACTS_DIR, "predictClimate/calibration.json")
     
 FEATURES = [
     'ALLSKY_SFC_LW_DWN','ALLSKY_SFC_PAR_TOT','ALLSKY_SFC_SW_DIFF','ALLSKY_SFC_SW_DNI',
@@ -226,9 +228,16 @@ def isCompleted(structured_command):
 
 # llm.py의 _run_game_simulation 함수
 
-def _run_game_simulation(command: dict, current_state: dict) -> tuple[dict, dict]:
+def _run_game_simulation(command: dict) -> tuple[dict, dict]:
     """기후 예측과 생산량 예측 ML 모델을 순차적으로 호출하여 다음 상태를 시뮬레이션합니다."""
-    
+    current_state = [
+        [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.22,0.22,0.17,0.0,0.0,97.03,3.06,35.98,12.64,-3.76,4.44,29.1,-0.36,17.25,0.0,13.38],
+        [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.33,0.33,0.16,0.15,4.52,99.58,6.91,46.77,21.67,7.43,14.55,35.04,9.85,14.47,0.0,22.84],
+        [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.27,0.27,0.2,0.01,0.31,97.45,5.0,30.35,22.49,2.94,12.72,34.69,9.56,16.04,0.0,22.73],
+        [25.85,4.5,3.36,16.82,10.11,0.55,0.01,0.5,0.12,47.73,5.31,12.01,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,17.02,0.0],
+        [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.3,0.3,0.27,0.03,0.81,97.01,5.26,52.07,14.28,3.67,8.97,28.97,4.14,13.89,0.0,15.06],
+        [30.11,7.31,4.88,19.54,16.11,0.93,0.02,1.25,0.16,37.23,8.49,18.8,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,26.57,0.0]
+    ]
     climate_predictor = predictors.get("climate")
     if not climate_predictor:
         raise RuntimeError("기후 예측 모델이 로드되지 않았습니다.")
