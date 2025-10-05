@@ -1,13 +1,12 @@
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 import json
 import os
 
 # --- 설정 파일 경로 (실제 파일은 프로젝트 내에 있어야 합니다) ---
-questionTypeDeterminerPath = "utils/questionTypeChecker.json"
-normalizeUserinputPath = "utils/normalizeUserinput.json"
-procedureAnalyzerPath = "utils/procedureAnalyzer.json"  # 새로 추가된 경로
-feedbackGeneratorPath = "utils/feedbackGenerator.json" # 새로 추가된 경로
+questionTypeDeterminerPath = "Screwed-Backend/src/app/services/utils/questionTypeChecker.json"
+normalizeUserinputPath = "Screwed-Backend/src/app/services/utils/normalizeUserinput.json"
+procedureAnalyzerPath = "Screwed-Backend/src/app/services/utils/procedureAnalyzer.json"  # 새로 추가된 경로
+feedbackGeneratorPath = "Screwed-Backend/src/app/services/utils/feedbackGenerator.json" # 새로 추가된 경로
 
 # --- 유틸리티 함수 ---
 
@@ -24,24 +23,19 @@ def load_config(path):
         print(f"Error: Invalid JSON format in {path}")
         return None
 
-def createClient(key):
-    """Gemini API 클라이언트 객체를 생성합니다."""
-    try:
-        client = genai.Client(api_key=key)
-        return client
-    except Exception as e:
-        print(f"Not able to get client: {e}")
-        return None
-    
-def _call_gemini_model(client, path, contents, model_name="gemini-flash-latest"):
+def _call_gemini_model(path, contents, model_name="gemini-flash-latest"):
     """Gemini API 호출을 위한 헬퍼 함수."""
     config_data = load_config(path)
     if not config_data:
         return None
 
-    api_config = types.GenerateContentConfig(
-        system_instruction=config_data["system_instruction"],
-        response_mime_type=config_data.get("output_mime_type", "text/plain"),
+    model = genai.GenerativeModel(
+        model_name=model_name,
+        system_instruction=config_data["system_instruction"]
+    )
+
+    generation_config = genai.GenerationConfig(
+        response_mime_type=config_data.get("output_mime_type", "text/plain")
     )
     
     # 예제 추가
@@ -54,10 +48,9 @@ def _call_gemini_model(client, path, contents, model_name="gemini-flash-latest")
     full_contents.extend(contents)
 
     try:
-        response = client.models.generate_content(
-            model=model_name,
+        response = model.generate_content(
             contents=full_contents,
-            config=api_config
+            generation_config=generation_config
         )
         # JSON 응답을 가정하고 로드 (text/plain이면 그냥 텍스트가 될 수 있음)
         if config_data.get("output_mime_type") == "application/json":
@@ -69,7 +62,7 @@ def _call_gemini_model(client, path, contents, model_name="gemini-flash-latest")
 
 # --- 핵심 함수 구현 ---
 
-def normalizeInput(client, message):
+def normalizeInput(message):
     """
     1. 오탈자, 별명 등을 정규화합니다.
     2. 문장 내의 조치 개수(action_count)를 추출하여 반환합니다.
@@ -78,25 +71,25 @@ def normalizeInput(client, message):
     contents = [{"role": "user", "parts": [{"text": message}]}]
     
     # 'normalizeUserinputPath' 모델 호출
-    normalized_data = _call_gemini_model(client, normalizeUserinputPath, contents)
+    normalized_data = _call_gemini_model(normalizeUserinputPath, contents)
     
     # 반환 구조 예시: {"normalized_text": "옥수수 심어.", "action_count": 1}
     return normalized_data if isinstance(normalized_data, dict) else {"normalized_text": message, "action_count": 0}
 
-def determineQuestionType(client, normalizedData):
+def determineQuestionType(normalizedData):
     """
     정규화된 입력 텍스트를 Q(질문), I(명령), O(기타) 중 하나로 분류합니다.
     """
-    message_text = normalizedData.get("normalized_text", "")
+    message_text = normalizedData.get("normalized", "")
     contents = [{"role": "user", "parts": [{"text": message_text}]}]
     
     # 'questionTypeDeterminerPath' 모델 호출
-    classification = _call_gemini_model(client, questionTypeDeterminerPath, contents)
+    classification = _call_gemini_model(questionTypeDeterminerPath, contents)
     
     # 반환 구조 예시: {"type": "I"}
     return classification if isinstance(classification, dict) else {"type": "O"}
 
-def procedureAnalyzer(client, sentence):
+def procedureAnalyzer(sentence):
     """
     단일 명령을 받아 게임 엔진용 JSON 객체(의도/매개변수)로 변환합니다.
     과도한 위임 요청(예: '알아서 해줘')은 '위임_불가' 의도로 반환됩니다.
@@ -104,12 +97,12 @@ def procedureAnalyzer(client, sentence):
     contents = [{"role": "user", "parts": [{"text": sentence}]}]
     
     # 'procedureAnalyzerPath' 모델 호출
-    structured_command = _call_gemini_model(client, procedureAnalyzerPath, contents)
+    structured_command = _call_gemini_model(procedureAnalyzerPath, contents)
     
     # 반환 구조 예시: {"intent": "심기", "crop": "옥수수", "target_area": "A-5"}
     return structured_command if isinstance(structured_command, dict) else {"intent": "무효", "error": "분석 실패"}
 
-def questionHandler(client, question_text):
+def questionHandler(question_text):
     """
     질문 텍스트를 분석하여 필요한 정보를 조회하고 자연어 답변을 생성합니다.
     """
@@ -118,7 +111,7 @@ def questionHandler(client, question_text):
     contents = [{"role": "user", "parts": [{"text": f"질문에 답변해주세요: {question_text}"}]}]
     
     # 'feedbackGeneratorPath' 모델 호출 (질문 응답 모드로 가정)
-    response_data = _call_gemini_model(client, feedbackGeneratorPath, contents)
+    response_data = _call_gemini_model(feedbackGeneratorPath, contents)
 
     if isinstance(response_data, str):
         return {"final_response": response_data, "status": "ANSWERED"}
@@ -126,7 +119,7 @@ def questionHandler(client, question_text):
     return {"final_response": "정보를 조회하는 데 실패했습니다. 다시 질문해 주세요.", "status": "ERROR"}
 
 
-def isCompleted(client, structured_command):
+def isCompleted(structured_command):
     """
     유효한 구조화 명령을 시뮬레이션 엔진에 전달하고 최종 완료 피드백을 생성합니다.
     """
@@ -144,7 +137,7 @@ def isCompleted(client, structured_command):
     contents = [{"role": "user", "parts": [{"text": f"실행된 명령: {structured_command}, 시뮬레이션 결과: {simulation_result}"}]}]
     
     # 'feedbackGeneratorPath' 모델 호출 (실행 피드백 모드로 가정)
-    final_feedback = _call_gemini_model(client, feedbackGeneratorPath, contents)
+    final_feedback = _call_gemini_model(feedbackGeneratorPath, contents)
 
     return {"final_response": final_feedback, "status": "COMPLETED"}
 
@@ -163,17 +156,17 @@ def _run_game_simulation(command):
     }
 
 
-def eventHandler(client, user_input):
+def eventHandler(user_input):
     """
     사용자 입력을 받아 단일 처리를 수행하고 최종 응답을 반환하는 메인 흐름 제어 함수입니다.
     """
     
     # 1. 입력 정규화 및 조치 개수 확인
-    normalizedData = normalizeInput(client, user_input)
+    normalizedData = normalizeInput(user_input)
     action_count = normalizedData.get("action_count", 0)
     
     # 2. 질문 타입 확인
-    sentenceType = determineQuestionType(client, normalizedData)
+    sentenceType = determineQuestionType( normalizedData)
     user_type = sentenceType.get("type")
     
     normalized_text = normalizedData.get("normalized_text", user_input)
@@ -189,7 +182,7 @@ def eventHandler(client, user_input):
             }
         
         # 4. 단일 조치 명령 분석 (procedureAnalyzer)
-        structured_command = procedureAnalyzer(client, normalized_text)
+        structured_command = procedureAnalyzer(normalized_text)
         
         # 5. 과도한 위임/무효 요청 검토
         if structured_command and structured_command.get("intent") in ["위임_불가", "무효"]:
@@ -200,12 +193,12 @@ def eventHandler(client, user_input):
             }
         
         # 6. 유효한 단일 명령 실행 (isCompleted)
-        return isCompleted(client, structured_command)
+        return isCompleted(structured_command)
         
     # --- II. 질문 처리 ('Q') ---
     elif user_type == 'Q':
         # 7. 질문 처리 (questionHandler)
-        return questionHandler(client, normalized_text)
+        return questionHandler(normalized_text)
         
     # --- III. 기타 발언 처리 ('O') ---
     else: # user_type == 'O'
@@ -222,13 +215,16 @@ def test_event_handler():
     print("--- Event Handler Test Simulation ---")
     
     # GEMINI_API_KEY 환경 변수가 설정되어 있어야 합니다.
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = "AIzaSyCSCpQlWCX3ThJTNLzjDYPTBy8gWzqCBTQ"#os.getenv("GEMINI_API_KEY")
     if not api_key:
         print("Error: GEMINI_API_KEY environment variable not set.")
         return
-        
-    client = createClient(api_key)
-    if not client:
+
+    try:
+        genai.configure(api_key=api_key)
+        print("Gemini API configured successfully.")
+    except Exception as e:
+        print(f"Failed to configure Gemini API: {e}")
         return
 
     # 테스트 데이터 (action_count 및 type을 가정한 응답)
@@ -246,7 +242,60 @@ def test_event_handler():
     for i, item in enumerate(test_inputs):
         print(f"\n--- Test {i+1}: Input: '{item}' ---")
         # 실제 API 호출이 포함되므로, 시간이 소요될 수 있습니다.
-        result = eventHandler(client, item)
+        result = eventHandler(item)
         print(f"Final Result: {json.dumps(result, indent=4, ensure_ascii=False)}")
 
-# test_event_handler()
+def start_interactive_mode():
+    """사용자와 직접 상호작용하는 메인 함수."""
+    print("--- 농업 시뮬레이션 게임 AI 비서 ---")
+    print("안녕하세요! 무엇을 도와드릴까요?")
+    print("(게임을 종료하려면 '종료' 또는 'exit'를 입력하세요)")
+    
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("\n[오류] GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        print("게임을 시작하기 전에 API 키를 설정해주세요.")
+        return
+    
+    try:
+        genai.configure(api_key=api_key)
+        print("\nGemini API가 성공적으로 연결되었습니다.")
+    except Exception as e:
+        print(f"\n[오류] Gemini API 연결에 실패했습니다: {e}")
+        return
+
+    while True:
+        try:
+            # 1. 사용자 입력 받기
+            user_input = input("\n> 나: ")
+            
+            # 2. 종료 조건 확인
+            if user_input.lower() in ["종료", "exit", "quit"]:
+                print("게임을 종료합니다. 이용해주셔서 감사합니다.")
+                break
+            
+            # 3. eventHandler로 입력 처리
+            result = eventHandler(user_input)
+            
+            # 4. AI 응답 출력
+            ai_response = result.get("final_response", "오류가 발생했습니다.")
+            try:
+                # 먼저 유니코드 이스케이프 형식이라고 가정하고 디코딩을 시도합니다.
+                decoded_response = ai_response.encode('latin1').decode('unicode_escape')
+            except UnicodeEncodeError:
+                # 만약 위에서 오류가 발생하면 (이미 정상적인 한글이라는 뜻이므로),
+                # 아무 처리 없이 원본 응답을 그대로 사용합니다.
+                decoded_response = ai_response
+
+            normalized_response = normalizeInput(decoded_response).get("normalized", "")
+
+            print(f"💬 AI 비서: {normalized_response}")
+
+        except KeyboardInterrupt: # Ctrl+C 입력 시 종료
+            print("\n게임을 강제 종료합니다.")
+            break
+        except Exception as e:
+            print(f"[알 수 없는 오류 발생]: {e}")
+
+start_interactive_mode()
+#test_event_handler()
